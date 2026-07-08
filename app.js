@@ -1,6 +1,9 @@
 const MAX_STEPS = 10;
 const MIN_QUBITS = 1;
-const MAX_QUBITS = 5;
+const MAX_QUBITS = 64;
+const MAX_ACTIVE_STATES = 65536;
+const MAX_DISPLAY_STATES = 96;
+const EPSILON = 1e-12;
 const SQRT1_2 = Math.SQRT1_2;
 
 const gateMatrices = {
@@ -36,14 +39,16 @@ const app = {
   selectedGate: "H",
   pendingCnot: null,
   circuit: [],
-  state: [],
+  state: new Map(),
   shots: {},
+  simulationMessage: "",
 };
 
 const els = {
   fieldCanvas: document.querySelector("#fieldCanvas"),
   heroAmplitude: document.querySelector("#heroAmplitude"),
   qubitCount: document.querySelector("#qubitCount"),
+  qubitInput: document.querySelector("#qubitInput"),
   qubitCountLabel: document.querySelector("#qubitCountLabel"),
   decreaseQubits: document.querySelector("#decreaseQubits"),
   increaseQubits: document.querySelector("#increaseQubits"),
@@ -93,8 +98,35 @@ function formatComplex(z) {
   return `${re.toFixed(3)} ${sign} ${Math.abs(im).toFixed(3)}i`;
 }
 
+function toIndex(value) {
+  return typeof value === "bigint" ? value : BigInt(value);
+}
+
+function indexKey(index) {
+  return toIndex(index).toString();
+}
+
 function basisLabel(index, qubits = app.qubits) {
-  return `|${index.toString(2).padStart(qubits, "0")}>`;
+  return `|${toIndex(index).toString(2).padStart(qubits, "0")}>`;
+}
+
+function bitMaskForQubit(qubit) {
+  return 1n << BigInt(app.qubits - qubit - 1);
+}
+
+function getAmplitude(state, index) {
+  return state.get(indexKey(index)) || c(0, 0);
+}
+
+function setAmplitude(state, index, value) {
+  const key = indexKey(index);
+  if (mag2(value) > EPSILON) state.set(key, value);
+  else state.delete(key);
+}
+
+function formatDimension() {
+  if (app.qubits <= 20) return String(2 ** app.qubits);
+  return `2^${app.qubits}`;
 }
 
 function blankCircuit() {
@@ -102,8 +134,8 @@ function blankCircuit() {
 }
 
 function resetState() {
-  app.state = Array.from({ length: 2 ** app.qubits }, () => c(0, 0));
-  app.state[0] = c(1, 0);
+  app.state = new Map([["0", c(1, 0)]]);
+  app.simulationMessage = "";
 }
 
 function buildGrid() {
@@ -178,6 +210,7 @@ function renderCircuit() {
         renderCnot(step, gate.control, gate.target);
       } else {
         const cell = getCell(step, gate.target);
+        if (!cell) return;
         cell.classList.add("has-gate");
         cell.appendChild(gateChip(gate.type));
       }
@@ -186,6 +219,7 @@ function renderCircuit() {
 
   if (app.pendingCnot) {
     const cell = getCell(app.pendingCnot.step, app.pendingCnot.control);
+    if (!cell) return;
     cell.classList.add("cnot-control");
     cell.appendChild(gateChip("C"));
   }
@@ -194,6 +228,7 @@ function renderCircuit() {
 function renderCnot(step, control, target) {
   const controlCell = getCell(step, control);
   const targetCell = getCell(step, target);
+  if (!controlCell || !targetCell) return;
   const top = Math.min(control, target);
   const bottom = Math.max(control, target);
 
@@ -227,28 +262,45 @@ function gateChip(text) {
 
 function runCircuit() {
   resetState();
-  app.circuit.forEach((gates) => {
-    gates.forEach((gate) => {
-      if (gate.type === "CNOT") applyCnot(gate.control, gate.target);
-      else applySingleGate(gate.type, gate.target);
+
+  try {
+    app.circuit.forEach((gates) => {
+      gates.forEach((gate) => {
+        if (gate.type === "CNOT") applyCnot(gate.control, gate.target);
+        else applySingleGate(gate.type, gate.target);
+      });
     });
-  });
+  } catch (error) {
+    app.simulationMessage = error.message;
+  }
+
   app.shots = {};
   renderAll();
 }
 
 function applySingleGate(type, qubit) {
   const matrix = gateMatrices[type];
-  const bit = 1 << (app.qubits - qubit - 1);
-  const next = app.state.map((value) => c(value.re, value.im));
+  const bit = bitMaskForQubit(qubit);
+  const seen = new Set();
+  const next = new Map();
 
-  for (let i = 0; i < app.state.length; i += 1) {
-    if ((i & bit) === 0) {
-      const j = i | bit;
-      const a0 = app.state[i];
-      const a1 = app.state[j];
-      next[i] = add(mul(matrix[0][0], a0), mul(matrix[0][1], a1));
-      next[j] = add(mul(matrix[1][0], a0), mul(matrix[1][1], a1));
+  for (const key of app.state.keys()) {
+    const index = BigInt(key);
+    const base = index & ~bit;
+    const baseKey = indexKey(base);
+    if (seen.has(baseKey)) continue;
+    seen.add(baseKey);
+
+    const paired = base | bit;
+    const a0 = getAmplitude(app.state, base);
+    const a1 = getAmplitude(app.state, paired);
+    const next0 = add(mul(matrix[0][0], a0), mul(matrix[0][1], a1));
+    const next1 = add(mul(matrix[1][0], a0), mul(matrix[1][1], a1));
+    setAmplitude(next, base, next0);
+    setAmplitude(next, paired, next1);
+
+    if (next.size > MAX_ACTIVE_STATES) {
+      throw new Error(`Exact sparse state reached ${next.size.toLocaleString()} active amplitudes. Remove some H gates or export to Qiskit for larger experiments.`);
     }
   }
 
@@ -256,18 +308,15 @@ function applySingleGate(type, qubit) {
 }
 
 function applyCnot(control, target) {
-  const controlBit = 1 << (app.qubits - control - 1);
-  const targetBit = 1 << (app.qubits - target - 1);
-  const next = app.state.map((value) => c(value.re, value.im));
+  const controlBit = bitMaskForQubit(control);
+  const targetBit = bitMaskForQubit(target);
+  const next = new Map();
 
-  for (let i = 0; i < app.state.length; i += 1) {
-    const shouldFlip = (i & controlBit) !== 0;
-    const isLowerPair = (i & targetBit) === 0;
-    if (shouldFlip && isLowerPair) {
-      const j = i | targetBit;
-      next[i] = app.state[j];
-      next[j] = app.state[i];
-    }
+  for (const [key, amp] of app.state.entries()) {
+    const index = BigInt(key);
+    const shouldFlip = (index & controlBit) !== 0n;
+    const nextIndex = shouldFlip ? index ^ targetBit : index;
+    setAmplitude(next, nextIndex, amp);
   }
 
   app.state = next;
@@ -276,16 +325,21 @@ function applyCnot(control, target) {
 function measureCircuit() {
   const shots = clamp(Number(els.shotCount.value) || 512, 32, 4096);
   els.shotCount.value = shots;
-  const probabilities = app.state.map(mag2);
+  const probabilities = probabilityRows(false);
   const counts = {};
+
+  if (!probabilities.length) {
+    renderShots();
+    return;
+  }
 
   for (let shot = 0; shot < shots; shot += 1) {
     let roll = Math.random();
-    let measured = probabilities.length - 1;
-    for (let i = 0; i < probabilities.length; i += 1) {
-      roll -= probabilities[i];
+    let measured = probabilities[probabilities.length - 1].index;
+    for (const row of probabilities) {
+      roll -= row.probability;
       if (roll <= 0) {
-        measured = i;
+        measured = row.index;
         break;
       }
     }
@@ -308,12 +362,20 @@ function renderAll() {
   updateSummary();
 }
 
-function renderProbabilityChart() {
-  const rows = app.state
-    .map((amp, index) => ({ index, label: basisLabel(index), probability: mag2(amp) }))
-    .sort((a, b) => b.probability - a.probability);
+function probabilityRows(sorted = true) {
+  const rows = [...app.state.entries()]
+    .map(([key, amp]) => ({ index: BigInt(key), label: basisLabel(key), amplitude: amp, probability: mag2(amp) }))
+    .filter((row) => row.probability > EPSILON);
 
-  els.probabilityChart.innerHTML = rows
+  if (sorted) rows.sort((a, b) => b.probability - a.probability);
+  return rows;
+}
+
+function renderProbabilityChart() {
+  const rows = probabilityRows();
+  const displayed = rows.slice(0, MAX_DISPLAY_STATES);
+
+  els.probabilityChart.innerHTML = displayed
     .map(
       (row) => `
         <div class="probability-row">
@@ -325,26 +387,45 @@ function renderProbabilityChart() {
     )
     .join("");
 
-  const dominant = rows[0];
+  if (rows.length > displayed.length) {
+    els.probabilityChart.insertAdjacentHTML(
+      "beforeend",
+      `<div class="truncated-row">Showing top ${displayed.length} of ${rows.length.toLocaleString()} active basis states</div>`
+    );
+  }
+
+  const dominant = rows[0] || { label: basisLabel(0n), probability: 1, amplitude: c(1, 0) };
   els.dominantState.textContent = `${dominant.label} ${(dominant.probability * 100).toFixed(1)}%`;
-  els.heroAmplitude.textContent = formatComplex(app.state[dominant.index] || app.state[0]);
+  els.heroAmplitude.textContent = formatComplex(dominant.amplitude);
 }
 
 function renderStateVector() {
   let norm = 0;
-  els.stateVector.innerHTML = app.state
-    .map((amp, index) => {
-      const probability = mag2(amp);
-      norm += probability;
-      return `
+  const rows = probabilityRows();
+  rows.forEach((row) => {
+    norm += row.probability;
+  });
+
+  const displayed = rows.slice(0, MAX_DISPLAY_STATES);
+  els.stateVector.innerHTML = displayed
+    .map(
+      (row) => `
         <div class="amplitude-row">
-          <strong>${basisLabel(index)}</strong>
-          <span>${formatComplex(amp)}</span>
-          <span>${(probability * 100).toFixed(1)}%</span>
+          <strong>${row.label}</strong>
+          <span>${formatComplex(row.amplitude)}</span>
+          <span>${(row.probability * 100).toFixed(1)}%</span>
         </div>
-      `;
-    })
+      `
+    )
     .join("");
+
+  if (rows.length > displayed.length) {
+    els.stateVector.insertAdjacentHTML(
+      "beforeend",
+      `<div class="truncated-row">Showing top ${displayed.length} of ${rows.length.toLocaleString()} active amplitudes</div>`
+    );
+  }
+
   els.normalization.textContent = `norm ${norm.toFixed(3)}`;
 }
 
@@ -353,8 +434,10 @@ function renderShots() {
   const total = entries.reduce((sum, [, count]) => sum + count, 0);
 
   if (!total) {
-    els.measurementResult.textContent = "ready";
-    els.shotResults.innerHTML = `<div class="shot-row"><strong>--</strong><span>No samples yet</span><span>0</span></div>`;
+    els.measurementResult.textContent = app.simulationMessage ? "limited" : "ready";
+    els.shotResults.innerHTML = app.simulationMessage
+      ? `<div class="shot-row"><strong>limit</strong><span>${app.simulationMessage}</span><span>--</span></div>`
+      : `<div class="shot-row"><strong>--</strong><span>No samples yet</span><span>0</span></div>`;
     return;
   }
 
@@ -391,6 +474,7 @@ function generateQiskitCode() {
     `qc = QuantumCircuit(${app.qubits}, ${app.qubits})`,
     "",
     "# Simulator row q0 maps to Qiskit qubit 0.",
+    "# Large qubit counts may require real hardware or specialized simulators.",
   ];
 
   const gateLines = app.circuit.flatMap((gates, step) =>
@@ -527,20 +611,25 @@ function drawAxis(ctx, x1, y1, x2, y2, label, color) {
 }
 
 function blochForQubit(qubit) {
-  const bit = 1 << (app.qubits - qubit - 1);
+  const bit = bitMaskForQubit(qubit);
+  const seen = new Set();
   let rho00 = 0;
   let rho11 = 0;
   let rho01 = c(0, 0);
 
-  for (let i = 0; i < app.state.length; i += 1) {
-    if ((i & bit) === 0) {
-      const j = i | bit;
-      const a0 = app.state[i];
-      const a1 = app.state[j];
-      rho00 += mag2(a0);
-      rho11 += mag2(a1);
-      rho01 = add(rho01, mul(a0, c(a1.re, -a1.im)));
-    }
+  for (const key of app.state.keys()) {
+    const index = BigInt(key);
+    const base = index & ~bit;
+    const baseKey = indexKey(base);
+    if (seen.has(baseKey)) continue;
+    seen.add(baseKey);
+
+    const paired = base | bit;
+    const a0 = getAmplitude(app.state, base);
+    const a1 = getAmplitude(app.state, paired);
+    rho00 += mag2(a0);
+    rho11 += mag2(a1);
+    rho01 = add(rho01, mul(a0, c(a1.re, -a1.im)));
   }
 
   return {
@@ -552,9 +641,14 @@ function blochForQubit(qubit) {
 
 function updateSummary() {
   els.qubitCount.value = app.qubits;
+  els.qubitInput.value = app.qubits;
   els.qubitCountLabel.textContent = app.qubits;
-  els.stateSummary.textContent = `State dimension: ${2 ** app.qubits} amplitudes`;
-  if (!app.pendingCnot) setStatus(`Selected gate: ${app.selectedGate}`);
+  const active = app.state.size.toLocaleString();
+  const dimension = formatDimension();
+  els.stateSummary.textContent = app.simulationMessage
+    ? `Limited at ${active} active amplitudes out of ${dimension}`
+    : `Sparse state: ${active} active amplitudes out of ${dimension}`;
+  if (!app.pendingCnot) setStatus(app.simulationMessage || `Selected gate: ${app.selectedGate}`);
 }
 
 function setStatus(text) {
@@ -562,7 +656,7 @@ function setStatus(text) {
 }
 
 function setQubits(nextQubits) {
-  app.qubits = clamp(nextQubits, MIN_QUBITS, MAX_QUBITS);
+  app.qubits = clamp(Math.round(nextQubits), MIN_QUBITS, MAX_QUBITS);
   app.circuit = blankCircuit();
   app.pendingCnot = null;
   resetState();
@@ -674,6 +768,9 @@ function bindEvents() {
   els.decreaseQubits.addEventListener("click", () => setQubits(app.qubits - 1));
   els.increaseQubits.addEventListener("click", () => setQubits(app.qubits + 1));
   els.qubitCount.addEventListener("input", (event) => setQubits(Number(event.target.value)));
+  els.qubitInput.addEventListener("input", (event) => {
+    if (event.target.value) setQubits(Number(event.target.value));
+  });
   els.shotCount.addEventListener("input", renderQiskitCode);
   els.gateButtons.forEach((button) => button.addEventListener("click", () => setGate(button.dataset.gate)));
   els.presetButtons.forEach((button) => button.addEventListener("click", () => applyPreset(button.dataset.preset)));

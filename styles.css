@@ -373,6 +373,21 @@ label {
   font-family: "JetBrains Mono", monospace;
 }
 
+.qubit-control {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
+.control-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
 .icon-button,
 .gate-button,
 .preset-grid button,
@@ -652,7 +667,8 @@ button:focus-visible,
 }
 
 .amplitude-row,
-.shot-row {
+.shot-row,
+.truncated-row {
   display: grid;
   grid-template-columns: 80px minmax(120px, 1fr) 64px;
   gap: 0.7rem;
@@ -674,6 +690,12 @@ button:focus-visible,
 .amplitude-row span,
 .shot-row span {
   color: var(--muted);
+}
+
+.truncated-row {
+  grid-template-columns: 1fr;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
 }
 
 .export-panel {
@@ -853,7 +875,8 @@ button:focus-visible,
   .panel-row,
   .probability-row,
   .amplitude-row,
-  .shot-row {
+  .shot-row,
+  .truncated-row {
     grid-template-columns: 1fr;
   }
 

@@ -4,13 +4,17 @@ An interactive, dependency-free quantum circuit simulator that runs entirely in 
 
 ## Features
 
-- State-vector simulation for 1 to 5 qubits
+- Sparse state-vector simulation with up to 64 qubit rows
 - Gates: H, X, Y, Z, S, T, and CNOT
 - Circuit grid editor with preset Bell, GHZ, and phase circuits
 - Probability chart, state vector readout, Bloch-style view for qubit 0
 - Measurement sampling with configurable shot count
 - Qiskit Python export with copy and download controls
 - Responsive static website ready for GitHub Pages
+
+The browser simulator stores active amplitudes instead of allocating the full `2^n`
+state vector. That lets you design large circuits, while exact simulation pauses if
+a circuit expands beyond 65,536 active amplitudes.
 
 ## Run Locally
 

@@ -70,12 +70,16 @@
             <div class="panel-group">
               <div class="panel-row">
                 <label for="qubitCount">Qubits</label>
-                <div class="stepper">
-                  <button class="icon-button" id="decreaseQubits" type="button" aria-label="Decrease qubits">-</button>
-                  <output id="qubitCountLabel" for="qubitCount">3</output>
-                  <button class="icon-button" id="increaseQubits" type="button" aria-label="Increase qubits">+</button>
+                <div class="qubit-control">
+                  <div class="stepper">
+                    <button class="icon-button" id="decreaseQubits" type="button" aria-label="Decrease qubits">-</button>
+                    <output id="qubitCountLabel" for="qubitCount">3</output>
+                    <button class="icon-button" id="increaseQubits" type="button" aria-label="Increase qubits">+</button>
+                  </div>
+                  <input id="qubitInput" type="number" min="1" max="64" value="3" aria-label="Qubit count">
                 </div>
-                <input id="qubitCount" class="sr-only" type="range" min="1" max="5" value="3">
+                <input id="qubitCount" class="sr-only" type="range" min="1" max="64" value="3">
+                <p class="control-note">Use up to 64 circuit rows. Exact simulation stores only active amplitudes and pauses if a circuit grows past 65,536 active states.</p>
               </div>
               <div class="panel-row">
                 <label for="shotCount">Shots</label>
@@ -196,8 +200,8 @@
         <div class="concept-grid">
           <article class="concept-card">
             <span class="concept-index">01</span>
-            <h3>State Vector</h3>
-            <p>The simulator stores every basis amplitude as a complex number and updates all affected amplitudes when gates are applied.</p>
+            <h3>Sparse State</h3>
+            <p>The simulator stores active basis amplitudes only, so many qubit rows can exist without allocating the full 2^n state vector.</p>
           </article>
           <article class="concept-card">
             <span class="concept-index">02</span>
@@ -211,8 +215,8 @@
           </article>
           <article class="concept-card">
             <span class="concept-index">04</span>
-            <h3>Measurement</h3>
-            <p>Shot counts are sampled from each basis state's probability, which is the squared magnitude of its amplitude.</p>
+            <h3>Scaling Limit</h3>
+            <p>Each Hadamard can double active states. The site stays responsive by stopping exact simulation when the active state becomes too large.</p>
           </article>
         </div>
       </section>
@@ -220,7 +224,7 @@
 
     <footer class="site-footer">
       <span>Quantum Simulator</span>
-      <span>State-vector engine for 1-5 qubits</span>
+      <span>Sparse state-vector engine for 1-64 qubits</span>
     </footer>
 
     <script src="app.js"></script>
