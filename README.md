@@ -9,6 +9,7 @@ An interactive, dependency-free quantum circuit simulator that runs entirely in 
 - Circuit grid editor with preset Bell, GHZ, and phase circuits
 - Probability chart, state vector readout, Bloch-style view for qubit 0
 - Measurement sampling with configurable shot count
+- Qiskit Python export with copy and download controls
 - Responsive static website ready for GitHub Pages
 
 ## Run Locally

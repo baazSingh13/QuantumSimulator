@@ -64,6 +64,10 @@ const els = {
   normalization: document.querySelector("#normalization"),
   shotResults: document.querySelector("#shotResults"),
   measurementResult: document.querySelector("#measurementResult"),
+  qiskitCode: document.querySelector("#qiskitCode"),
+  qiskitStatus: document.querySelector("#qiskitStatus"),
+  copyQiskit: document.querySelector("#copyQiskit"),
+  downloadQiskit: document.querySelector("#downloadQiskit"),
 };
 
 function c(re, im) {
@@ -290,6 +294,7 @@ function measureCircuit() {
   }
 
   app.shots = counts;
+  renderQiskitCode();
   renderShots();
 }
 
@@ -299,6 +304,7 @@ function renderAll() {
   renderStateVector();
   renderBloch();
   renderShots();
+  renderQiskitCode();
   updateSummary();
 }
 
@@ -364,6 +370,106 @@ function renderShots() {
       `
     )
     .join("");
+}
+
+function renderQiskitCode() {
+  els.qiskitCode.value = generateQiskitCode();
+  els.qiskitStatus.textContent = "ready to copy";
+}
+
+function generateQiskitCode() {
+  const shots = clamp(Number(els.shotCount.value) || 512, 32, 4096);
+  const lines = [
+    "from qiskit import QuantumCircuit, transpile",
+    "",
+    "try:",
+    "    from qiskit_aer import AerSimulator",
+    "except ImportError:",
+    "    AerSimulator = None",
+    "",
+    `shots = ${shots}`,
+    `qc = QuantumCircuit(${app.qubits}, ${app.qubits})`,
+    "",
+    "# Simulator row q0 maps to Qiskit qubit 0.",
+  ];
+
+  const gateLines = app.circuit.flatMap((gates, step) =>
+    gates.map((gate) => qiskitGateLine(gate, step)).filter(Boolean)
+  );
+
+  if (gateLines.length) {
+    lines.push(...gateLines);
+  } else {
+    lines.push("# Empty circuit: all qubits start in |0>.");
+  }
+
+  lines.push(
+    "",
+    "qc.measure(range(qc.num_qubits), range(qc.num_clbits))",
+    "",
+    "print(qc.draw(output=\"text\"))",
+    "",
+    "if AerSimulator is None:",
+    "    print(\"Install qiskit-aer to run local shot simulation: pip install qiskit-aer\")",
+    "else:",
+    "    simulator = AerSimulator()",
+    "    compiled = transpile(qc, simulator)",
+    "    result = simulator.run(compiled, shots=shots).result()",
+    "    print(result.get_counts())",
+    ""
+  );
+
+  return lines.join("\n");
+}
+
+function qiskitGateLine(gate, step) {
+  const note = `  # column ${step + 1}`;
+  const methodByGate = {
+    H: "h",
+    X: "x",
+    Y: "y",
+    Z: "z",
+    S: "s",
+    T: "t",
+  };
+
+  if (gate.type === "CNOT") {
+    return `qc.cx(${gate.control}, ${gate.target})${note}`;
+  }
+
+  const method = methodByGate[gate.type];
+  if (!method) return "";
+  return `qc.${method}(${gate.target})${note}`;
+}
+
+async function copyQiskitCode() {
+  const code = els.qiskitCode.value;
+
+  try {
+    await navigator.clipboard.writeText(code);
+    els.qiskitStatus.textContent = "copied";
+  } catch {
+    els.qiskitCode.focus();
+    els.qiskitCode.select();
+    document.execCommand("copy");
+    els.qiskitStatus.textContent = "copied";
+  }
+
+  els.qiskitCode.setSelectionRange(0, 0);
+  els.copyQiskit.focus();
+}
+
+function downloadQiskitCode() {
+  const blob = new Blob([els.qiskitCode.value], { type: "text/x-python" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "quantum_circuit_qiskit.py";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  els.qiskitStatus.textContent = "downloaded";
 }
 
 function renderBloch() {
@@ -568,11 +674,14 @@ function bindEvents() {
   els.decreaseQubits.addEventListener("click", () => setQubits(app.qubits - 1));
   els.increaseQubits.addEventListener("click", () => setQubits(app.qubits + 1));
   els.qubitCount.addEventListener("input", (event) => setQubits(Number(event.target.value)));
+  els.shotCount.addEventListener("input", renderQiskitCode);
   els.gateButtons.forEach((button) => button.addEventListener("click", () => setGate(button.dataset.gate)));
   els.presetButtons.forEach((button) => button.addEventListener("click", () => applyPreset(button.dataset.preset)));
   els.runCircuit.addEventListener("click", runCircuit);
   els.measureCircuit.addEventListener("click", measureCircuit);
   els.clearCircuit.addEventListener("click", () => applyPreset("reset"));
+  els.copyQiskit.addEventListener("click", copyQiskitCode);
+  els.downloadQiskit.addEventListener("click", downloadQiskitCode);
 }
 
 function init() {

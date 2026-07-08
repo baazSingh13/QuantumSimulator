@@ -27,6 +27,7 @@
       <nav class="top-nav" aria-label="Primary">
         <a href="#simulator">Simulator</a>
         <a href="#states">States</a>
+        <a href="#qiskit">Qiskit</a>
         <a href="#learn">Learn</a>
       </nav>
     </header>
@@ -162,6 +163,27 @@
               <span id="measurementResult">ready</span>
             </div>
             <div id="shotResults" class="shot-results"></div>
+          </section>
+
+          <section class="data-panel export-panel" id="qiskit" aria-labelledby="qiskit-title">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Python Bridge</p>
+                <h2 id="qiskit-title">Qiskit Export</h2>
+              </div>
+              <span id="qiskitStatus">ready to copy</span>
+            </div>
+            <div class="export-actions">
+              <button class="tool-button" id="copyQiskit" type="button">Copy Code</button>
+              <button class="tool-button" id="downloadQiskit" type="button">Download .py</button>
+            </div>
+            <textarea
+              id="qiskitCode"
+              class="code-export"
+              readonly
+              spellcheck="false"
+              aria-label="Generated Qiskit Python code"
+            ></textarea>
           </section>
         </div>
       </section>
