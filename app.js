@@ -62,6 +62,7 @@ const els = {
   clearCircuit: document.querySelector("#clearCircuit"),
   selectionStatus: document.querySelector("#selectionStatus"),
   stateSummary: document.querySelector("#stateSummary"),
+  brainNavLink: document.querySelector("#brainNavLink"),
   viewButtons: [...document.querySelectorAll(".view-button")],
   circuitView: document.querySelector("#circuitView"),
   brainView: document.querySelector("#brainView"),
@@ -741,6 +742,21 @@ function setViewMode(mode) {
   renderBrainNetwork();
 }
 
+function openBrainMode(event) {
+  if (event) event.preventDefault();
+  setViewMode("brain");
+  document.querySelector("#brain").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function applyInitialHash() {
+  if (window.location.hash === "#brain") {
+    setViewMode("brain");
+    window.requestAnimationFrame(() => {
+      document.querySelector("#brain").scrollIntoView({ block: "start" });
+    });
+  }
+}
+
 async function copyQiskitCode() {
   const code = els.qiskitCode.value;
 
@@ -988,6 +1004,8 @@ function bindEvents() {
     if (event.target.value) setQubits(Number(event.target.value));
   });
   els.viewButtons.forEach((button) => button.addEventListener("click", () => setViewMode(button.dataset.view)));
+  els.brainNavLink.addEventListener("click", openBrainMode);
+  window.addEventListener("hashchange", applyInitialHash);
   els.brainCanvas.addEventListener("click", handleBrainClick);
   els.shotCount.addEventListener("input", renderQiskitCode);
   els.gateButtons.forEach((button) => button.addEventListener("click", () => setGate(button.dataset.gate)));
@@ -1005,6 +1023,7 @@ function init() {
   bindEvents();
   buildGrid();
   applyPreset("bell");
+  applyInitialHash();
   startFieldAnimation();
 }
 
