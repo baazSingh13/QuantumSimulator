@@ -26,6 +26,7 @@
       </a>
       <nav class="top-nav" aria-label="Primary">
         <a href="#simulator">Simulator</a>
+        <a href="#brain">Brain</a>
         <a href="#states">States</a>
         <a href="#qiskit">Qiskit</a>
         <a href="#learn">Learn</a>
@@ -126,8 +127,33 @@
               <span id="stateSummary">State dimension: 8 amplitudes</span>
             </div>
 
-            <div class="circuit-wrap" aria-label="Quantum circuit editor">
-              <div id="circuitGrid" class="circuit-grid"></div>
+            <div class="view-switch" role="tablist" aria-label="Simulator view">
+              <button class="view-button active" id="circuitViewButton" type="button" data-view="circuit" role="tab" aria-selected="true" aria-controls="circuitView">Circuit View</button>
+              <button class="view-button" id="brainViewButton" type="button" data-view="brain" role="tab" aria-selected="false" aria-controls="brainView">Brain Network</button>
+            </div>
+
+            <div id="circuitView" class="view-panel active" role="tabpanel" aria-labelledby="circuitViewButton">
+              <div class="circuit-wrap" aria-label="Quantum circuit editor">
+                <div id="circuitGrid" class="circuit-grid"></div>
+              </div>
+            </div>
+
+            <div id="brainView" class="view-panel brain-view" role="tabpanel" aria-labelledby="brainViewButton" hidden>
+              <section class="brain-panel" id="brain" aria-labelledby="brain-title">
+                <div class="panel-heading">
+                  <div>
+                    <p class="eyebrow">Neural Qubit Map</p>
+                    <h3 id="brain-title">Brain Network Mode</h3>
+                  </div>
+                  <span id="brainSummary">3 nodes, 1 signal link</span>
+                </div>
+                <canvas id="brainCanvas" width="980" height="560" aria-label="Brain-inspired qubit network"></canvas>
+                <div class="brain-legend" aria-label="Brain network legend">
+                  <span><i class="legend-dot idle"></i>q0...qN</span>
+                  <span><i class="legend-dot active"></i>probability signal</span>
+                  <span><i class="legend-line"></i>CNOT coupling</span>
+                </div>
+              </section>
             </div>
 
             <div class="visual-grid" id="states">

@@ -307,6 +307,7 @@ h1 {
 .workspace,
 .visual-panel,
 .data-panel,
+.brain-panel,
 .concept-card {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -486,6 +487,36 @@ button:focus-visible,
   font-size: 0.82rem;
 }
 
+.view-switch {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(130px, 1fr));
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+  padding: 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.view-button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.view-button.active {
+  background: rgba(94, 225, 162, 0.16);
+  color: #dcfff1;
+}
+
+.view-panel[hidden] {
+  display: none;
+}
+
 .circuit-wrap {
   overflow-x: auto;
   padding: 1rem 0.25rem 1.2rem;
@@ -593,9 +624,63 @@ button:focus-visible,
 }
 
 .visual-panel,
-.data-panel {
+.data-panel,
+.brain-panel {
   min-width: 0;
   padding: 1rem;
+}
+
+.brain-panel {
+  margin-bottom: 1rem;
+}
+
+#brainCanvas {
+  display: block;
+  width: 100%;
+  min-height: 420px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(93, 196, 255, 0.08), transparent 55%),
+    rgba(255, 255, 255, 0.035);
+  cursor: crosshair;
+}
+
+.brain-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin-top: 0.85rem;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.76rem;
+}
+
+.brain-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid rgba(93, 196, 255, 0.7);
+  background: rgba(13, 35, 42, 0.96);
+}
+
+.legend-dot.active {
+  border-color: rgba(94, 225, 162, 0.95);
+  background: rgba(94, 225, 162, 0.5);
+}
+
+.legend-line {
+  display: inline-block;
+  width: 26px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--green), var(--blue));
 }
 
 .panel-heading {
@@ -878,6 +963,15 @@ button:focus-visible,
   .shot-row,
   .truncated-row {
     grid-template-columns: 1fr;
+  }
+
+  .view-switch {
+    width: 100%;
+    grid-template-columns: 1fr;
+  }
+
+  #brainCanvas {
+    min-height: 340px;
   }
 
   .panel-heading {

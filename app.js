@@ -42,6 +42,8 @@ const app = {
   state: new Map(),
   shots: {},
   simulationMessage: "",
+  viewMode: "circuit",
+  brainNodeHitBoxes: [],
 };
 
 const els = {
@@ -60,6 +62,11 @@ const els = {
   clearCircuit: document.querySelector("#clearCircuit"),
   selectionStatus: document.querySelector("#selectionStatus"),
   stateSummary: document.querySelector("#stateSummary"),
+  viewButtons: [...document.querySelectorAll(".view-button")],
+  circuitView: document.querySelector("#circuitView"),
+  brainView: document.querySelector("#brainView"),
+  brainCanvas: document.querySelector("#brainCanvas"),
+  brainSummary: document.querySelector("#brainSummary"),
   circuitGrid: document.querySelector("#circuitGrid"),
   probabilityChart: document.querySelector("#probabilityChart"),
   dominantState: document.querySelector("#dominantState"),
@@ -354,6 +361,7 @@ function measureCircuit() {
 
 function renderAll() {
   renderCircuit();
+  renderBrainNetwork();
   renderProbabilityChart();
   renderStateVector();
   renderBloch();
@@ -524,6 +532,213 @@ function qiskitGateLine(gate, step) {
   const method = methodByGate[gate.type];
   if (!method) return "";
   return `qc.${method}(${gate.target})${note}`;
+}
+
+function renderBrainNetwork() {
+  const canvas = els.brainCanvas;
+  const ctx = canvas.getContext("2d");
+  const rect = canvas.getBoundingClientRect();
+  const cssWidth = Math.max(320, Math.round(rect.width || canvas.width));
+  const cssHeight = Math.max(280, Math.round(rect.height || canvas.height));
+  const dpr = window.devicePixelRatio || 1;
+
+  if (canvas.width !== Math.round(cssWidth * dpr) || canvas.height !== Math.round(cssHeight * dpr)) {
+    canvas.width = Math.round(cssWidth * dpr);
+    canvas.height = Math.round(cssHeight * dpr);
+  }
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssWidth, cssHeight);
+
+  const nodes = brainNodes(cssWidth, cssHeight);
+  app.brainNodeHitBoxes = nodes;
+  const cnotLinks = app.circuit.flatMap((gates, step) =>
+    gates.filter((gate) => gate.type === "CNOT").map((gate) => ({ ...gate, step }))
+  );
+  const activeSingleGates = app.circuit.flatMap((gates, step) =>
+    gates.filter((gate) => gate.type !== "CNOT").map((gate) => ({ ...gate, step }))
+  );
+
+  drawBrainBackground(ctx, cssWidth, cssHeight);
+  drawBrainLinks(ctx, nodes, cnotLinks);
+  drawBrainNodes(ctx, nodes, activeSingleGates);
+
+  const linkLabel = cnotLinks.length === 1 ? "signal link" : "signal links";
+  els.brainSummary.textContent = `${app.qubits} nodes, ${cnotLinks.length} ${linkLabel}`;
+}
+
+function brainNodes(width, height) {
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const maxRadius = Math.min(width, height) * 0.43;
+  const qubitProbabilities = qubitOneProbabilities();
+  const nodes = [];
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+
+  for (let q = 0; q < app.qubits; q += 1) {
+    const t = app.qubits === 1 ? 0 : q / (app.qubits - 1);
+    const angle = app.qubits <= 16 ? (q / app.qubits) * Math.PI * 2 - Math.PI / 2 : q * goldenAngle;
+    const radius = app.qubits <= 16 ? maxRadius * 0.72 : maxRadius * (0.18 + 0.82 * Math.sqrt(t));
+    nodes.push({
+      qubit: q,
+      x: centerX + Math.cos(angle) * radius,
+      y: centerY + Math.sin(angle) * radius,
+      radius: app.qubits <= 20 ? 15 : 10,
+      probability: qubitProbabilities[q] || 0,
+    });
+  }
+
+  return nodes;
+}
+
+function qubitOneProbabilities() {
+  const probabilities = Array.from({ length: app.qubits }, () => 0);
+
+  for (const [key, amp] of app.state.entries()) {
+    const index = BigInt(key);
+    const probability = mag2(amp);
+    for (let q = 0; q < app.qubits; q += 1) {
+      if ((index & bitMaskForQubit(q)) !== 0n) probabilities[q] += probability;
+    }
+  }
+
+  return probabilities;
+}
+
+function drawBrainBackground(ctx, width, height) {
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const rings = [0.22, 0.4, 0.58, 0.76];
+  ctx.lineWidth = 1;
+
+  rings.forEach((scale, index) => {
+    ctx.strokeStyle = `rgba(169, 193, 192, ${0.08 + index * 0.025})`;
+    ctx.beginPath();
+    ctx.ellipse(centerX, centerY, width * scale * 0.48, height * scale * 0.34, index * 0.2, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+}
+
+function drawBrainLinks(ctx, nodes, links) {
+  links.forEach((link, index) => {
+    const control = nodes[link.control];
+    const target = nodes[link.target];
+    if (!control || !target) return;
+
+    const gradient = ctx.createLinearGradient(control.x, control.y, target.x, target.y);
+    gradient.addColorStop(0, "rgba(94, 225, 162, 0.82)");
+    gradient.addColorStop(1, "rgba(93, 196, 255, 0.72)");
+    ctx.strokeStyle = gradient;
+    ctx.lineWidth = 2 + Math.min(3, index % 3);
+    ctx.beginPath();
+    const midX = (control.x + target.x) / 2;
+    const midY = (control.y + target.y) / 2 - 28;
+    ctx.moveTo(control.x, control.y);
+    ctx.quadraticCurveTo(midX, midY, target.x, target.y);
+    ctx.stroke();
+  });
+}
+
+function drawBrainNodes(ctx, nodes, gates) {
+  const gated = new Map();
+  gates.forEach((gate) => gated.set(gate.target, gate.type));
+
+  nodes.forEach((node) => {
+    const glow = Math.max(0.12, node.probability);
+    const radius = node.radius + glow * 7;
+    ctx.fillStyle = `rgba(93, 196, 255, ${0.12 + glow * 0.36})`;
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, radius + 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = gated.has(node.qubit) ? "rgba(255, 209, 102, 0.92)" : "rgba(13, 35, 42, 0.96)";
+    ctx.strokeStyle = node.probability > 0.45 ? "rgba(94, 225, 162, 0.95)" : "rgba(93, 196, 255, 0.65)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    if (gated.has(node.qubit)) {
+      ctx.fillStyle = "#101613";
+      ctx.font = "800 10px JetBrains Mono";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(gated.get(node.qubit), node.x, node.y);
+    } else if (app.qubits <= 24 || node.qubit % 4 === 0 || node.qubit === app.qubits - 1) {
+      ctx.fillStyle = "#dffdfa";
+      ctx.font = "700 10px JetBrains Mono";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(`q${node.qubit}`, node.x, node.y);
+    }
+  });
+}
+
+function handleBrainClick(event) {
+  const rect = els.brainCanvas.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+  const y = event.clientY - rect.top;
+  const node = app.brainNodeHitBoxes.find((candidate) => {
+    const dx = candidate.x - x;
+    const dy = candidate.y - y;
+    return Math.sqrt(dx * dx + dy * dy) <= candidate.radius + 12;
+  });
+
+  if (!node) return;
+  applyBrainGate(node.qubit);
+}
+
+function applyBrainGate(qubit) {
+  const step = nextAvailableStep();
+  if (step === -1) {
+    setStatus("Brain network is full; clear the circuit or reuse Circuit View.");
+    return;
+  }
+
+  if (app.selectedGate === "CNOT") {
+    if (!app.pendingCnot) {
+      app.pendingCnot = { step, control: qubit };
+      setStatus(`Brain CNOT control q${qubit}; click target node`);
+      renderBrainNetwork();
+      return;
+    }
+
+    if (app.pendingCnot.control === qubit) {
+      app.pendingCnot = null;
+      setStatus("Brain CNOT cancelled");
+      renderBrainNetwork();
+      return;
+    }
+
+    app.circuit[app.pendingCnot.step].push({ type: "CNOT", control: app.pendingCnot.control, target: qubit });
+    app.pendingCnot = null;
+  } else {
+    app.circuit[step].push({ type: app.selectedGate, target: qubit });
+  }
+
+  runCircuit();
+}
+
+function nextAvailableStep() {
+  const usedSteps = app.circuit.map((gates) => gates.length > 0);
+  const firstEmpty = usedSteps.findIndex((isUsed) => !isUsed);
+  return firstEmpty;
+}
+
+function setViewMode(mode) {
+  app.viewMode = mode;
+  const isBrain = mode === "brain";
+  els.circuitView.hidden = isBrain;
+  els.brainView.hidden = !isBrain;
+  els.circuitView.classList.toggle("active", !isBrain);
+  els.brainView.classList.toggle("active", isBrain);
+  els.viewButtons.forEach((button) => {
+    const active = button.dataset.view === mode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  renderBrainNetwork();
 }
 
 async function copyQiskitCode() {
@@ -760,6 +975,7 @@ function startFieldAnimation() {
   }
 
   window.addEventListener("resize", resize);
+  window.addEventListener("resize", renderBrainNetwork);
   resize();
   requestAnimationFrame(draw);
 }
@@ -771,6 +987,8 @@ function bindEvents() {
   els.qubitInput.addEventListener("input", (event) => {
     if (event.target.value) setQubits(Number(event.target.value));
   });
+  els.viewButtons.forEach((button) => button.addEventListener("click", () => setViewMode(button.dataset.view)));
+  els.brainCanvas.addEventListener("click", handleBrainClick);
   els.shotCount.addEventListener("input", renderQiskitCode);
   els.gateButtons.forEach((button) => button.addEventListener("click", () => setGate(button.dataset.gate)));
   els.presetButtons.forEach((button) => button.addEventListener("click", () => applyPreset(button.dataset.preset)));

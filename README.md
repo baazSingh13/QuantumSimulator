@@ -7,6 +7,7 @@ An interactive, dependency-free quantum circuit simulator that runs entirely in 
 - Sparse state-vector simulation with up to 64 qubit rows
 - Gates: H, X, Y, Z, S, T, and CNOT
 - Circuit grid editor with preset Bell, GHZ, and phase circuits
+- Brain Network Mode with neural-style qubit nodes and clickable signal links
 - Probability chart, state vector readout, Bloch-style view for qubit 0
 - Measurement sampling with configurable shot count
 - Qiskit Python export with copy and download controls
